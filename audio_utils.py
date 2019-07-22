@@ -4,11 +4,9 @@ from itertools import repeat
 
 import librosa
 import numpy as np
-import torch
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tckr
 from numpy import ndarray
-from scipy.linalg import toeplitz
 import scipy.signal as scsig
 
 from hparams import hp
@@ -83,88 +81,6 @@ def calc_using_eval_module(y_clean: ndarray, y_est: ndarray,
             sum_result += result
 
     return ODict(zip(keys, sum_result.tolist()))
-
-
-def reconstruct_wave(*args: ndarray, n_iter=0, n_sample=-1) -> ndarray:
-    """ reconstruct time-domain wave from spectrogram
-
-    :param args: can be (mag_spectrogram, phase_spectrogram) or (complex_spectrogram,)
-    :param n_iter: no. of iteration of griffin-lim
-    :param n_sample: number of samples of output wave
-    :return:
-    """
-
-    if len(args) == 1:
-        spec = args[0].squeeze()
-        mag = None
-        phase = None
-        assert np.iscomplexobj(spec)
-    elif len(args) == 2:
-        spec = None
-        mag = args[0].squeeze()
-        phase = args[1].squeeze()
-        assert np.isrealobj(mag) and np.isrealobj(phase)
-    else:
-        raise ValueError
-
-    for _ in range(n_iter - 1):
-        if mag is None:
-            mag = np.abs(spec)
-            phase = np.angle(spec)
-            spec = None
-        wave = librosa.core.istft(mag * np.exp(1j * phase), **hp.kwargs_istft)
-
-        phase = np.angle(librosa.core.stft(wave, **hp.kwargs_stft))
-
-    kwarg_len = dict(length=n_sample) if n_sample != -1 else dict()
-    if spec is None:
-        spec = mag * np.exp(1j * phase)
-    wave = librosa.core.istft(spec, **hp.kwargs_istft, **kwarg_len)
-
-    return wave
-
-
-def delta(*data: gen.TensArr, axis: int, L=2) -> gen.TensArrOrSeq:
-    dim = gen.ndim(data[0])
-    dtype = gen.convert_dtype(data[0].dtype, np)
-    if axis < 0:
-        axis += dim
-
-    max_len = max([item.shape[axis] for item in data])
-
-    # Einsum expression
-    # ex) if the member of a has the dim (b,c,f,t), (thus, axis=3)
-    # einxp: ij,abcd -> abci
-    str_axes = ''.join([chr(ord('a') + i) for i in range(dim)])
-    str_new_axes = ''.join([chr(ord('a') + i) if i != axis else 'i'
-                            for i in range(dim)])
-    ein_expr = f'ij,{str_axes}->{str_new_axes}'
-
-    # Create Toeplitz Matrix (T-2L, T)
-    col = np.zeros(max_len - 2 * L, dtype=dtype)
-    col[0] = -L
-
-    row = np.zeros(max_len, dtype=dtype)
-    row[:2 * L + 1] = range(-L, L + 1)
-
-    denominator = np.sum([ll**2 for ll in range(1, L + 1)])
-    tplz_mat = toeplitz(col, row) / (2 * denominator)
-
-    # Convert to Tensor
-    if type(data[0]) == torch.Tensor:
-        if data[0].device == torch.device('cpu'):
-            tplz_mat = torch.from_numpy(tplz_mat)
-        else:
-            tplz_mat = torch.tensor(tplz_mat, device=data[0].device)
-
-    # Calculate
-    result = [type(data[0])] * len(data)
-    for idx, item in enumerate(data):
-        length = item.shape[axis]
-        result[idx] = gen.einsum(ein_expr,
-                                 (tplz_mat[:length - 2 * L, :length], item))
-
-    return result if len(result) > 1 else result[0]
 
 
 def draw_spectrogram(data: gen.TensArr, fs: int, to_db=True, show=False, **kwargs):
@@ -257,68 +173,6 @@ def apply_freq_domain_filter(wave: ndarray, filter_fft: ndarray):
         filtered = np.stack(filtered, axis=0)
 
     return filtered
-
-
-def bnkr_equalize_(*args: ndarray) \
-        -> Union[ndarray, Tuple[ndarray, Union[ndarray, None]]]:
-    """ divide spectrogram into bnkr with regularization
-
-    :param args: (complex_spectrogram,), (magnitude_spectrogram,),
-        or (magnitude_spectrogram, phase_spectrogram)
-    :return: same as args
-    """
-    if len(args) == 1:
-        if np.iscomplexobj(args[0]):
-            spec = args[0]
-            mag = None
-            phase = None
-        else:
-            spec = None
-            mag = args[0]
-            phase = None
-    elif len(args) == 2:
-        spec = None
-        mag, phase = args
-    else:
-        raise ValueError
-
-    if mag is None:
-        assert spec.shape[0] == hp.bnkr_inv0.shape[0]
-        bnkr_inv0 = hp.bnkr_inv0.copy()
-        while spec.ndim < bnkr_inv0.ndim:
-            bnkr_inv0 = bnkr_inv0[..., 0]
-
-        spec *= bnkr_inv0
-
-        return spec
-    else:
-        assert mag.shape[0] == hp.bnkr_inv0_mag.shape[0]
-        bnkr_inv0_mag = hp.bnkr_inv0_mag.copy()
-        while mag.ndim < bnkr_inv0_mag.ndim:
-            bnkr_inv0_mag = bnkr_inv0_mag[..., 0]
-
-        mag *= bnkr_inv0_mag
-
-        if phase is not None:
-            assert phase.shape[0] == mag.shape[0]
-            bnkr_inv0_angle = hp.bnkr_inv0_angle.copy()
-            while phase.ndim < bnkr_inv0_mag.ndim:
-                bnkr_inv0_angle = bnkr_inv0_angle[..., 0]
-
-            phase += bnkr_inv0_angle
-            phase = principle_(phase)
-
-            return mag, phase
-        else:
-            if len(args) == 1:
-                return mag
-            else:
-                return mag, None
-
-
-def bnkr_equalize(*args: ndarray) -> Union[ndarray, Tuple[ndarray, ndarray]]:
-    args = [item.copy() for item in args]
-    return bnkr_equalize_(*args)
 
 
 def bnkr_equalize_time(wave: ndarray) -> ndarray:

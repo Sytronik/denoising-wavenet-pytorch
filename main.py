@@ -122,8 +122,8 @@ else:  # args.test
     dataset_test = MulchWavDataset(args.test,
                                    n_file=hp.n_file // 4,
                                    random_by_utterance=False,
-                                   normalization_in=dataset_temp.norm_in,
-                                   normalization_out=dataset_temp.norm_out
+                                   norm_in=dataset_temp.norm_in,
+                                   norm_out=dataset_temp.norm_out
                                    )
     loader = DataLoader(dataset_test,
                         batch_size=1,

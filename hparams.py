@@ -49,7 +49,7 @@ class _HyperParameters:
     n_file: int = 20 * 50
     train_ratio: float = 0.7
     n_epochs: int = 150
-    batch_size: int = 4 * 2
+    batch_size: int = 4 * 4
     learning_rate: float = 5e-4
     weight_decay: float = 0  # Adam weight_decay
     weight_loss: tuple = (0.1, 1)  # L1, MSE
@@ -87,11 +87,12 @@ class _HyperParameters:
                              # x=Channel.LAST,
                              y=Channel.ALL,
                              )
-        self.DWaveNet = dict(
+        self.DWaveNet = dict(  # in_channels is set in init_dependent_vars
+            out_channels=1, bias=False,
             num_layers=30, num_stacks=3,
-            residual_channels=128, gate_channels=128, skip_out_channels=128,
+            kernel_size=3,
+            residual_channels=128, gate_channels=256, skip_out_channels=128,
             last_channels=(2048, 256),
-            kernel_size=3, bias=False, weight_norm=False,
         )
         self.scheduler = dict(T_0=10,
                               T_mult=2,
@@ -120,8 +121,8 @@ class _HyperParameters:
         path_feature_train = self.path_feature / f'mulchwav_{self.room_train}/TRAIN'
         path_feature_test = self.path_feature / f'mulchwav_{self.room_test}/TEST'
         self.dict_path = dict(
-            sft_data=self.path_feature / 'sft_data_32ms.mat',
-            RIR_Ys=self.path_feature / f'RIR_Ys_TRAIN20_TEST20_{self.room_create}.mat',
+            sft_data=self.path_feature / 'bEQf.mat',
+            RIR=self.path_feature / f'RIR_{self.room_create}.mat',
 
             speech_train=self.path_speech / 'TRAIN',
             speech_test=self.path_speech / 'TEST',

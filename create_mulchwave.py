@@ -30,7 +30,7 @@ from tqdm import tqdm
 from numpy import ndarray
 
 from hparams import hp
-from audio_utils import apply_iir_filter
+from audio_utils import apply_freq_domain_filter
 
 
 def process():
