@@ -1,3 +1,29 @@
+""" Train or Test DNN
+
+Usage:
+```
+    python main.py {--train, --test={seen, unseen}}
+                   [--room_train ROOM_TRAIN]
+                   [--room_test ROOM_TEST]
+                   [--logdir LOGDIR]
+                   [--n_epochs MAX_EPOCH]
+                   [--from START_EPOCH]
+                   [--device DEVICES] [--out_device OUT_DEVICE]
+                   [--batch_size B]
+                   [--learning_rate LR]
+                   [--weight_decay WD]
+                   [--model_name MODEL]
+```
+
+More parameters are in `hparams.py`.
+- specify `--train` or `--test {seen, unseen}`.
+- ROOM_TRAIN: room used to train
+- ROOM_TEST: room used to test
+- LOGDIR: log directory
+- MAX_EPOCH: maximum epoch
+- START_EPOCH: start epoch (Default: -1)
+- DEVICES, OUT_DEVICE, B, LR, WD, MODEL: read `hparams.py`.
+"""
 # noinspection PyUnresolvedReferences
 import matlab.engine
 
@@ -73,7 +99,7 @@ dataset_temp = MulchWavDataset('train', n_file=hp.n_file)
 dataset_train, dataset_valid = MulchWavDataset.split(dataset_temp, (hp.train_ratio, -1))
 
 # run
-trainer = Trainer.create(path_state_dict)
+trainer = Trainer(path_state_dict)
 if args.train:
     loader_train = DataLoader(dataset_train,
                               batch_size=hp.batch_size,
@@ -96,13 +122,14 @@ else:  # args.test
     dataset_test = MulchWavDataset(args.test,
                                    n_file=hp.n_file // 4,
                                    random_by_utterance=False,
-                                   normalization_in=dataset_temp.normalization_in,
-                                   normalization_out=dataset_temp.normalization_out
+                                   normalization_in=dataset_temp.norm_in,
+                                   normalization_out=dataset_temp.norm_out
                                    )
     loader = DataLoader(dataset_test,
                         batch_size=1,
                         num_workers=hp.num_disk_workers,
                         collate_fn=dataset_test.pad_collate,
+                        pin_memory=True,
                         shuffle=False,
                         )
 

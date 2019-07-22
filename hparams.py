@@ -2,7 +2,7 @@ import os
 from argparse import ArgumentParser, Namespace
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Sequence, Tuple, Union, get_type_hints
+from typing import Any, Dict, Sequence, Tuple, Union
 
 import numpy as np
 import scipy.io as scio
@@ -32,7 +32,7 @@ class _HyperParameters:
     room_create: str = ''
 
     model_name: str = 'DWaveNet'
-    criterion_name: str = 'MSELoss'
+    criterion_names: str = ('L1Loss', 'MSELoss')
     l_target: int = 8192
 
     # stft parameters
@@ -52,9 +52,7 @@ class _HyperParameters:
     batch_size: int = 4 * 2
     learning_rate: float = 5e-4
     weight_decay: float = 0  # Adam weight_decay
-    n_loss_term: int = 1
-    weight_loss: tuple = (0.1, 1)  # complex
-    # weight_loss: tuple = (0.3, 1, 0.08)  # magphase
+    weight_loss: tuple = (0.1, 1)  # L1, MSE
 
     # reconstruction
     do_bnkr_eq: bool = True
@@ -147,11 +145,6 @@ class _HyperParameters:
                                 window='hann',
                                 center=True,
                                 dtype=np.complex64)
-        self.kwargs_istft = dict(hop_length=self.l_hop,
-                                 win_length=self.l_frame,
-                                 window='hann',
-                                 center=True,
-                                 dtype=np.float32)
         self.n_loc = dict()
         for kind in ('train', 'seen', 'unseen'):
             path_metadata = self.dict_path[f'feature_{kind}'] / 'metadata.mat'
@@ -167,24 +160,15 @@ class _HyperParameters:
             self.period_save_state = self.scheduler['T_0'] // 2
 
         sft_dict = scio.loadmat(str(self.dict_path['sft_data']),
-                                variable_names=('bEQf',),
-                                squeeze_me=True)
+                                variable_names=('bEQf',))
         self.bnkr_inv0 = sft_dict['bEQf'][:, 0]
         self.bnkr_inv0 = np.concatenate(
             (self.bnkr_inv0, self.bnkr_inv0[-2:0:-1].conj())
         )  # N_fft
 
-        # if self.DF == 'DirAC':
-        #     self.do_bnkr_eq = False
-        # else:
-        #     self.do_bnkr_eq = True
-
     @staticmethod
     def is_featurefile(f: os.DirEntry) -> bool:
-        return (f.name.endswith('.npz')
-                # and not f.name.startswith('metadata')
-                # and not f.name.startswith('normconst_')
-                )
+        return f.name.endswith('.npz')
 
     # Function for parsing argument and set hyper parameters
     def parse_argument(self, parser=None, print_argument=True) -> Namespace:
@@ -227,25 +211,6 @@ class _HyperParameters:
             [f'{k}: {v}' for k, v in asdict(self).items() if not isinstance(v, ndarray)])
         result += '\n-------------------------'
         return result
-
-    # deprecated
-    # n_per_frame: int
-
-    # p = 0.5  # Dropout p
-
-    # lr scheduler
-    # StepLR: Dict[str, Any] = dict(step_size=5, gamma=0.8)
-    #
-    # CosineAnnealingLR: Dict[str, Any] = dict(
-    #     T_max=10,
-    #     eta_min=0,
-    # )
-
-    # def for_MLP(self) -> Tuple:
-    #     n_input = self.L_cut_x * self.n_per_frame
-    #     n_hidden = 17 * self.n_per_frame
-    #     n_output = self.n_per_frame
-    #     return (n_input, n_hidden, n_output, self.p)
 
 
 hp = _HyperParameters()

@@ -70,7 +70,7 @@ class Normalization:
         """
 
         :param all_files:
-        :param key:
+        :param key: data name in npz file
         :rtype: Normalization
         """
 
@@ -151,12 +151,12 @@ class MulchWavDataset(Dataset):
     def __init__(self, kind_data: str,
                  n_file: int,
                  random_by_utterance=False,
-                 normalization_in: Normalization = None,
-                 normalization_out: Normalization = None):
+                 norm_in: Normalization = None,
+                 norm_out: Normalization = None):
         self._PATH: Path = hp.dict_path[f'feature_{kind_data}']
 
-        self.normalization_in = None
-        self.normalization_out = None
+        self.norm_in = None
+        self.norm_out = None
         path_normconst = Path(hp.dict_path[f'form_normconst_{kind_data}'].format(n_file))
         if path_normconst.exists():
             dict_normconst = scio.loadmat(path_normconst,
@@ -172,24 +172,24 @@ class MulchWavDataset(Dataset):
         if kind_data == 'train':
             self.all_files = [self._PATH / f for f in s_all_files]
             if dict_normconst is not None and not hp.refresh_const:
-                self.normalization_in = Normalization(*dict_normconst['normconst_in'])
-                self.normalization_out = Normalization(*dict_normconst['normconst_out'])
+                self.norm_in = Normalization(*dict_normconst['normconst_in'])
+                self.norm_out = Normalization(*dict_normconst['normconst_out'])
             else:
-                self.normalization_in \
+                self.norm_in \
                     = Normalization.calc_const(self.all_files, key=hp.mulchwav_names['x'])
-                self.normalization_out \
+                self.norm_out \
                     = Normalization.calc_const(self.all_files, key=hp.mulchwav_names['y'])
                 scio.savemat(path_normconst,
                              dict(s_all_files=s_all_files,
-                                  normconst_in=self.normalization_in.astuple(),
-                                  normconst_out=self.normalization_out.astuple(),
+                                  normconst_in=self.norm_in.astuple(),
+                                  normconst_out=self.norm_out.astuple(),
                                   ),
                              )
         else:
-            assert normalization_in, normalization_out
+            assert norm_in, norm_out
             self.all_files = [self._PATH / f for f in s_all_files]
-            self.normalization_in = normalization_in
-            self.normalization_out = normalization_out
+            self.norm_in = norm_in
+            self.norm_out = norm_out
             if dict_normconst is None:
                 scio.savemat(path_normconst, dict(s_all_files=s_all_files))
 
@@ -220,10 +220,13 @@ class MulchWavDataset(Dataset):
                 if not hp.channels[xy].value:
                     continue
                 data = npz_data[hp.mulchwav_names[xy]]
-                sample[xy] = data[hp.channels[xy].value].astype(np.float32)
+                data = data[hp.channels[xy].value]
+
+                if data.ndim == 1:
+                    data = data[np.newaxis, :]
+
+                sample[xy] = torch.tensor(data, dtype=torch.float32)
                 sample[f'T_{xy}'] = sample[xy].shape[-1]
-            sample['y'] = sample['y'][np.newaxis, :]
-            # sample['path_speech'] = str(dict_data[hp.mulchwav_names['path_speech']])
 
         return sample
 
@@ -244,7 +247,8 @@ class MulchWavDataset(Dataset):
         T_xs = np.array([item.pop('T_x') for item in batch])
         idxs_sorted = np.argsort(T_xs)
         T_xs = T_xs[idxs_sorted] + 2 * hp.l_diff
-        T_ys = np.array([batch[idx].pop('T_y') for idx in idxs_sorted])
+        batch = [batch[i] for i in idxs_sorted]
+        T_ys = np.array([item.pop('T_y') for item in batch])
 
         result['T_xs'], result['T_ys'] = T_xs, T_ys
 
@@ -258,11 +262,10 @@ class MulchWavDataset(Dataset):
                     result[key] = list_data
             else:
                 # B, T, C
-                data = [torch.from_numpy(batch[idx][key]).permute(-1, -2)
-                        for idx in idxs_sorted]
+                data = [item[key].permute(-1, -2) for item in batch]
                 data = pad_sequence(data, batch_first=True)
                 # B, C, T
-                data = data.permute(0, -1, -2)  # .numpy()
+                data = data.permute(0, -1, -2)
 
                 result[key] = data
 
@@ -283,12 +286,8 @@ class MulchWavDataset(Dataset):
         """
         result = dict()
         for key, value in batch.items():
-            if type(value) == str:
-                result[key] = value
-            elif type(value) == list:
-                result[key] = value[idx]
-            elif not key.startswith('T_'):
-                T_xy = 'T_xs' if 'x' in key else 'T_ys'
+            if not key.startswith('T_'):
+                T_xy = f'T_{key}s'
                 result[key] = value[idx, :, :batch[T_xy][idx]].numpy()
 
         result['x'] = result['x'][..., hp.l_diff:-hp.l_diff]

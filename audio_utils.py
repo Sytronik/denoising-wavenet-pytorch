@@ -16,90 +16,6 @@ import generic as gen
 from matlab_lib import Evaluation as EvalModule
 
 
-# class SNRseg(nn.Module):
-#     EINEXPR = 'ftc,ftc->t'
-#
-#     def __init__(self):
-#         super().__init__()
-#
-#     def forward(self, y_clean: torch.Tensor, y_est: torch.Tensor,
-#                 T_ys: ndarray) -> torch.Tensor:
-#         if not T_ys:
-#             T_ys = (y_est.shape[-2],) * y_est.shape[0]
-#         sum_result = torch.zeros(1, device=y_est.device)
-#         for i_b, (T, item_clean, item_est) in enumerate(zip(T_ys, y_clean, y_est)):
-#             # T
-#             norm_y = torch.einsum(SNRseg.einexpr,
-#                                   [item_clean[:, :T, :]] * 2)
-#             norm_err = torch.einsum(SNRseg.einexpr,
-#                                     [item_est[:, :T, :] - item_clean[:, :T, :]]*2)
-#
-#             sum_result += torch.log10(norm_y / norm_err).mean(dim=1)
-#         sum_result *= 10
-#         return sum_result
-
-# class Measurement:
-#     __slots__ = ('__len',
-#                  '__METRICS',
-#                  '__sum_values',
-#                  )
-#
-#     DICT_CALC = dict(SNRseg='Measurement.calc_snrseg',
-#                      # STOI=Measurement.calc_stoi,
-#                      PESQ_STOI='Measurement.calc_pesq_stoi',
-#                      )
-#
-#     def __init__(self, *metrics):
-#         self.__len = 0
-#         self.__METRICS = metrics
-#         # self.__seq_values = {metric: torch.empty(max_size) for metric in self.__METRICS}
-#         self.__sum_values: ODict = None
-#
-#     def __len__(self):
-#         return self.__len
-#
-#     def __str__(self):
-#         return self._str_measure(self.average())
-#
-#     # def __getitem__(self, idx):
-#     #     return [self.__seq_values[metric][idx] for metric in self.__METRICS]
-#
-#     def average(self):
-#         """
-#
-#         :rtype: OrderedDict[str, torch.Tensor]
-#         """
-#         return ODict([(metric, sum_ / self.__len)
-#                       for metric, sum_ in self.__sum_values.items()])
-#
-#     def append(self, y: ndarray, out: ndarray,
-#                T_ys: Union[int, Sequence[int]]) -> str:
-#         values = ODict([(metric, eval(self.DICT_CALC[metric])(y, out, T_ys))
-#                         for metric in self.__METRICS])
-#         if self.__len:
-#             for metric, v in values.items():
-#                 # self.__seq_values[metric][self.__len] = self.DICT_CALC[metric](y, out, T_ys)
-#                 self.__sum_values[metric] += v
-#         else:
-#             self.__sum_values = values
-#
-#         self.__len += len(T_ys) if hasattr(T_ys, '__len__') else 1
-#         return self._str_measure(values)
-#
-#     @staticmethod
-#     def _str_measure(values: ODict) -> str:
-#         return '\t'.join(
-#             [f"{metric}={arr2str(v, 'f')} " for metric, v in values.items()]
-#         )
-#
-#
-# def calc_stoi(y_clean: ndarray, y_est: ndarray):
-#     sum_result = 0.
-#     for item_clean, item_est in zip(y_clean, y_est):
-#         sum_result += stoi(item_clean, item_est, hp.Fs)
-#     return sum_result
-
-
 EVAL_METRICS = EvalModule.metrics
 
 
@@ -266,7 +182,7 @@ def draw_spectrogram(data: gen.TensArr, fs: int, to_db=True, show=False, **kwarg
     if to_db:
         data = librosa.amplitude_to_db(data)
 
-    fig, ax = plt.subplots(dpi=300)
+    fig, ax = plt.subplots(dpi=150)
     ax.imshow(data,
               cmap=plt.get_cmap('CMRmap'),
               extent=(0, data.shape[1], 0, fs // 2),
@@ -289,7 +205,7 @@ def draw_audio(data: gen.TensArr, fs: int, show=False, xlim=None, ylim=(-1, 1)):
     if xlim is None:
         xlim = (0, t_axis[-1])
 
-    fig, ax = plt.subplots(figsize=(xlim[1] * 10, 2), dpi=300)
+    fig, ax = plt.subplots(figsize=(xlim[1] * 10, 2), dpi=150)
     ax.plot(t_axis, data)
     ax.set_xlabel('time')
     ax.xaxis.set_major_locator(tckr.MultipleLocator(0.5))
@@ -304,7 +220,14 @@ def draw_audio(data: gen.TensArr, fs: int, show=False, xlim=None, ylim=(-1, 1)):
     return fig
 
 
-def apply_iir_filter(wave: ndarray, filter_fft: ndarray):
+def principle_(angle):
+    angle += np.pi
+    angle %= (2 * np.pi)
+    angle -= np.pi
+    return angle
+
+
+def apply_freq_domain_filter(wave: ndarray, filter_fft: ndarray):
     # bnkr equalization in frequency domain
     filtered = []
     if wave.ndim == 1:
@@ -399,4 +322,9 @@ def bnkr_equalize(*args: ndarray) -> Union[ndarray, Tuple[ndarray, ndarray]]:
 
 
 def bnkr_equalize_time(wave: ndarray) -> ndarray:
-    return apply_iir_filter(wave, hp.bnkr_inv0)
+    """compensate modal strength $b_n(kr)$ in the 0-th order time-domain SHD signal
+
+    :param wave:
+    :return:
+    """
+    return apply_freq_domain_filter(wave, hp.bnkr_inv0)

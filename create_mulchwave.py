@@ -1,13 +1,16 @@
 """ create directional spectrogram.
 
---init option forces to start from the first data.
---dirac option is for using dirac instead of spatially average intensity.
-
-Ex)
-python create_mulchwave.py TRAIN
-python create_mulchwave.py UNSEEN --init
-python create_mulchwave.py SEEN --dirac
-python create_mulchwave.py TRAIN --dirac --init
+Usage:
+```
+    python create.py room_create
+                     {TRAIN,SEEN,UNSEEN}
+                     [--from_idx IDX] [-t TARGET] [--num_disk_workers N]
+                     ...
+```
+More parameters are in `hparams.py`.
+- IDX: speech index
+- TARGET: name of the folder feature files will be saved. The folder is a child of `hp.path_feature`.
+- N: number of subprocesses to write files.
 """
 
 # noinspection PyUnresolvedReferences
@@ -184,7 +187,7 @@ if __name__ == '__main__':
 
     # propagation
     p00_RIRs = RIRs.mean(1)  # n_loc x time
-    a00_RIRs = apply_iir_filter(p00_RIRs, bnkr_inv[0, :, 0])
+    a00_RIRs = apply_freq_domain_filter(p00_RIRs, bnkr_inv[0, :, 0])
 
     t_peak = a00_RIRs.argmax(axis=1)
     amp_peak = a00_RIRs.max(axis=1)
