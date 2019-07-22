@@ -1,3 +1,6 @@
+""" forked from wavenet_vocoder (https://github.com/r9y9/wavenet_vocoder).
+
+"""
 import math
 
 import torch
